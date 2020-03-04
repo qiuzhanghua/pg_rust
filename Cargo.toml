@@ -1,0 +1,11 @@
+[package]
+name = "pg_rust"
+version = "0.1.0"
+authors = ["qiuzhanghua <qiuzhanghua@icloud.com>"]
+edition = "2018"
+
+[dependencies]
+dotenv = "0.15"
+postgres = "0.17.1"
+r2d2 = "0.8"
+r2d2_postgres = "0.16.0"
