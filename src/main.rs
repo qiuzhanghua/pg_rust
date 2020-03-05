@@ -105,11 +105,10 @@ pub fn query_data(
     conn: &mut PooledConnection<PostgresConnectionManager<NoTls>>,
     sql: &str,
     name: &str,
-    enabled: bool,
     limit: i64,
     offset: i64,
 ) -> std::result::Result<Vec<Person>, Box<dyn Error>> {
-    let qr = conn.query(sql, &[&name, &enabled, &limit, &offset])?;
+    let qr = conn.query(sql, &[&name, &limit, &offset])?;
 
     let people = qr
         .iter()
@@ -191,7 +190,7 @@ mod tests {
         let manager = PostgresConnectionManager::new(config, NoTls);
         let pool = Arc::new(r2d2::Pool::builder().max_size(4).build(manager).unwrap());
         let mut conn = pool.get().unwrap();
-        if let Ok(people) = query_data(&mut conn, "select * from people where name=$1 and enabled=$2 limit $3 offset $4", "Daniel", true, 10, 0) {
+        if let Ok(people) = query_data(&mut conn, "select * from people where name=$1 limit $2 offset $3", "Eason", 10, 0) {
             println!("{:?}", people)
         } else {
             assert!(false, "Query err")
