@@ -1,4 +1,4 @@
-use postgres::{Config, NoTls};
+use postgres::{Config, IsolationLevel, NoTls};
 use r2d2::PooledConnection;
 use r2d2_postgres::PostgresConnectionManager;
 use std::error::Error;
@@ -19,16 +19,15 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-
 /*
 create table people
 (
-	id bigserial
-		constraint people_pk
-			primary key,
-	name varchar(80) not null,
-	email varchar(128) not null,
-	enabled bool default false
+    id bigserial
+        constraint people_pk
+            primary key,
+    name varchar(80) not null,
+    email varchar(128) not null,
+    enabled bool default false
 );
 */
 #[derive(Debug, PartialEq, Eq)]
@@ -101,6 +100,8 @@ pub fn query_columns(
     Ok(cols)
 }
 
+
+// showcase of limit and offset
 pub fn query_data(
     conn: &mut PooledConnection<PostgresConnectionManager<NoTls>>,
     sql: &str,
@@ -109,7 +110,6 @@ pub fn query_data(
     offset: i64,
 ) -> std::result::Result<Vec<Person>, Box<dyn Error>> {
     let qr = conn.query(sql, &[&name, &limit, &offset])?;
-
     let people = qr
         .iter()
         .map(|row| {
@@ -128,9 +128,40 @@ pub fn query_data(
     Ok(people)
 }
 
+pub fn insert_data(
+    conn: &mut PooledConnection<PostgresConnectionManager<NoTls>>,
+    name: &str,
+    email: &str,
+    enabled: bool,
+) -> std::result::Result<u64, Box<dyn Error>> {
+    let sql = "INSERT INTO people (name, email, enabled) VALUES ($1, $2, $3)";
+    let updated = conn.execute(sql, &[&name, &email, &enabled])?;
+    Ok(updated)
+}
+
+pub fn remove_data(
+    conn: &mut PooledConnection<PostgresConnectionManager<NoTls>>,
+    name: &str,
+    email: &str,
+    enabled: bool,
+) -> std::result::Result<u64, Box<dyn Error>> {
+    let sql = "DELETE FROM people WHERE name = $1 and email = $2 and enabled = $3";
+    // use transaction
+    let mut transaction = conn
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()?;
+    let updated = transaction.execute(sql, &[&name, &email, &enabled])?;
+    transaction.commit()?;
+    // without explicit transaction
+    // let updated = conn.execute(sql, &[&name, &email, &enabled])?;
+    Ok(updated)
+}
 #[cfg(test)]
 mod tests {
-    use crate::{query_columns, query_data, query_databases, query_tables};
+    use crate::{
+        insert_data, query_columns, query_data, query_databases, query_tables, remove_data,
+    };
     use postgres::{Config, NoTls};
     use r2d2_postgres::PostgresConnectionManager;
     use std::str::FromStr;
@@ -190,10 +221,44 @@ mod tests {
         let manager = PostgresConnectionManager::new(config, NoTls);
         let pool = Arc::new(r2d2::Pool::builder().max_size(4).build(manager).unwrap());
         let mut conn = pool.get().unwrap();
-        if let Ok(people) = query_data(&mut conn, "select * from people where name=$1 limit $2 offset $3", "Eason", 10, 0) {
+        if let Ok(people) = query_data(
+            &mut conn,
+            "select * from people where name=$1 limit $2 offset $3",
+            "Eason",
+            10,
+            0,
+        ) {
             println!("{:?}", people)
         } else {
             assert!(false, "Query err")
+        }
+    }
+
+    #[test]
+    fn test_insert() {
+        dotenv::dotenv().ok();
+        let db_url = dotenv::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let config = Config::from_str(&db_url).unwrap();
+        let manager = PostgresConnectionManager::new(config, NoTls);
+        let pool = Arc::new(r2d2::Pool::builder().max_size(4).build(manager).unwrap());
+        let mut conn = pool.get().unwrap();
+        match insert_data(&mut conn, "Eason", "qiuyisheng@icloud.com", true) {
+            Ok(id) => assert!(id > 0),
+            Err(e) => assert!(false, e.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_remove() {
+        dotenv::dotenv().ok();
+        let db_url = dotenv::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let config = Config::from_str(&db_url).unwrap();
+        let manager = PostgresConnectionManager::new(config, NoTls);
+        let pool = Arc::new(r2d2::Pool::builder().max_size(4).build(manager).unwrap());
+        let mut conn = pool.get().unwrap();
+        match remove_data(&mut conn, "Eason", "qiuyisheng@icloud.com", true) {
+            Ok(count) => assert_eq!(count, 1),
+            Err(e) => assert!(false, e.to_string()),
         }
     }
 }
